@@ -84,6 +84,14 @@ work between the processor's cores:
 - **Core 2** takes each finished frame and puts it on the screen.
 - **Core 3** is parked.
 
+EDuke32's entry point is renamed at compile time — `-Dmain=eduke32_main`,
+applied only to `source/build/src/sdlayer.cpp` — because `main()` here
+belongs to the kernel. That file compiles as C++, like the rest of the Build
+engine, so the renamed function keeps ordinary C++ linkage: the kernel's own
+declaration of `eduke32_main` must **not** be `extern "C"`, or it asks the
+linker for the unmangled name while the object file offers the mangled one.
+This cost the port its first working link.
+
 ### The operating system calls the board does not have
 
 The game is written for a Unix-like system. This board's C library is
@@ -259,20 +267,19 @@ repository and everything in it without an account.
 Read this section before expecting the game to build, let alone run.
 
 - **It does not link yet.** Every source file compiles clean for all three
-  boards, but the final link stops on nine missing SDL2 functions:
-  `SDL_CloseAudio`, `SDL_GL_DeleteContext`, `SDL_GetDisplayDPI`,
-  `SDL_GetKeyboardFocus`, `SDL_GetWindowWMInfo`, `SDL_GL_GetDrawableSize`,
-  `SDL_Vulkan_GetDrawableSize`, `SDL_OpenURL`, `SDL_SetTextInputRect`. Seven
-  of the nine are needed because EDuke32 vendors dear imgui and calls its
-  SDL2 backend — `ImGui_ImplSDL2_NewFrame`, `ImGui_ImplSDL2_ProcessEvent` —
-  unconditionally, every frame and every event, for any SDL2 build; only the
-  OpenGL renderer backend inside imgui is gated by `USE_OPENGL`, not the
-  subsystem as a whole. `SDL_CloseAudio` is a one-line gap next to the
-  `SDL_CloseAudioDevice` circle-libsdl2 already has. `SDL_GL_DeleteContext`
-  is dead code on this board — no GL context is ever created — but the
-  symbol still has to resolve. None of the nine belong in this repository:
-  circle-libsdl2 is the SDL2 layer, and this is what it still owes this
-  port.
+  boards, but the final link stops on seven missing SDL2 functions:
+  `SDL_GetDisplayDPI`, `SDL_GetKeyboardFocus`, `SDL_GetWindowWMInfo`,
+  `SDL_GL_DeleteContext`, `SDL_GL_GetDrawableSize`, `SDL_SetTextInputRect`,
+  `SDL_Vulkan_GetDrawableSize`. Six of the seven are needed because EDuke32
+  vendors dear imgui and calls its SDL2 backend —
+  `ImGui_ImplSDL2_NewFrame`, `ImGui_ImplSDL2_ProcessEvent` — unconditionally,
+  every frame and every event, for any SDL2 build; only the OpenGL renderer
+  backend inside imgui is gated by `USE_OPENGL`, not the subsystem as a
+  whole. `SDL_GL_DeleteContext` is dead code on this board — no GL context
+  is ever created — but the symbol still has to resolve. None of the seven
+  belong in this repository: circle-libsdl2 is the SDL2 layer, and this is
+  what it still owes this port. (Two more, `SDL_CloseAudio` and
+  `SDL_OpenURL`, were in this list until circle-libsdl2 added them.)
 - **It has never been seen to run.** Nothing in this repository has been
   observed drawing a frame on a real screen, because nothing here has linked
   yet. Serial output would not be gameplay either, and until somebody has
