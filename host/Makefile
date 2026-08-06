@@ -66,10 +66,11 @@ TARGET = $(OBJDIR)/$(IMAGE)
 # Sources
 # ---------------------------------------------------------------------------
 
-# The kernel wrapper, the syscall layer, the POSIX gap layer and this port's
-# own SDL layer: C++, and this project's own code.
+# The kernel wrapper, the syscall layer, the POSIX gap layer, the game-state
+# storage mmulti.cpp would otherwise own, and this port's own SDL layer:
+# C++, and this project's own code.
 HOST_SRCS = main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp \
-	posix_compat.cpp circle_stubs.cpp
+	posix_compat.cpp circle_stubs.cpp duke_globals.cpp
 HOST_OBJS = $(addprefix $(OBJDIR)/,$(HOST_SRCS:.cpp=.o))
 
 # ---------------------------------------------------------------------------
@@ -123,11 +124,26 @@ AUDIO_CPP = \
 # The input and animation helper library shared by the Build games.
 MACT_CPP = animlib.cpp control.cpp joystick.cpp keyboard.cpp scriplib.cpp
 
+# Dear ImGui, EDuke32's in-game UI toolkit. sdlayer.cpp includes and calls
+# its core (context creation, frame begin/end) and its SDL2 input backend
+# unconditionally for any SDL2 build — only the OpenGL renderer backend is
+# guarded by USE_OPENGL, and this board has none. The demo window, the Win32
+# backend and the OpenGL backend are not in this list: nothing here calls
+# them, matching the OpenGL exclusions above.
+IMGUI_CPP = imgui.cpp imgui_draw.cpp imgui_tables.cpp imgui_widgets.cpp \
+	imgui_impl_sdl2.cpp
+
+# The window icon: a plain pixel array in upstream's resource directory,
+# compiled like any other Build engine C file.
+ICON_C = eduke32_icon.c
+
 DUKE_SRCS = \
 	$(addprefix source/build/src/,$(ENGINE_C) $(ENGINE_CPP)) \
 	$(addprefix source/duke3d/src/,$(DUKE_CPP)) \
+	$(addprefix source/duke3d/rsrc/,$(ICON_C)) \
 	$(addprefix source/audiolib/src/,$(AUDIO_CPP)) \
-	$(addprefix source/mact/src/,$(MACT_CPP))
+	$(addprefix source/mact/src/,$(MACT_CPP)) \
+	$(addprefix source/imgui/src/,$(IMGUI_CPP))
 
 DUKE_OBJS = $(addprefix $(OBJDIR)/ek/,$(basename $(DUKE_SRCS)))
 DUKE_OBJS := $(addsuffix .o,$(DUKE_OBJS))
@@ -180,11 +196,14 @@ DEFINE += -DRAPI_GAME_DIR='"$(RAPI_GAME_DIR)"'
 # The glad directory is on the path even though this is a software-renderer
 # build with no OpenGL in it: build.h includes glad/glad.h unconditionally,
 # so the declarations have to be readable. No glad object is compiled and no
-# GL entry point is ever called.
+# GL entry point is ever called. The imgui directory is on the path for its
+# own headers, which sdlayer.cpp includes unconditionally (see IMGUI_CPP
+# above for which of its sources are actually compiled).
 INCLUDE := -I $(CURDIR)/sdl2ext \
 	-I $(SHIM)/include -I $(SHIM)/include/SDL2 \
 	-I $(DUKE)/source/build/include \
 	-I $(DUKE)/source/glad/include \
+	-I $(DUKE)/source/imgui/include \
 	-I $(DUKE)/source/mact/include \
 	-I $(DUKE)/source/audiolib/include \
 	-I $(DUKE)/source/voidwrap/include \

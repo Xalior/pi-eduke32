@@ -40,7 +40,13 @@
 // EDuke32's entry point. It is main() in the upstream source, in the SDL
 // layer (source/build/src/sdlayer.cpp); the build renames it for that one
 // translation unit, because main() here belongs to the Circle kernel.
-extern "C" int eduke32_main(int argc, char **argv);
+//
+// No extern "C": sdlayer.cpp is compiled as C++, like the rest of the Build
+// engine, and the renamed function is defined with ordinary C++ linkage.
+// Declaring it extern "C" here would ask the linker for the unmangled name
+// while the object file offers the mangled one — two different symbols that
+// never resolve to each other.
+int eduke32_main(int argc, char **argv);
 
 void CGlueStdioInit(CConsole &rConsole);
 

@@ -256,12 +256,28 @@ repository and everything in it without an account.
 
 ## State of this port
 
-Read this section before expecting the game to run.
+Read this section before expecting the game to build, let alone run.
 
+- **It does not link yet.** Every source file compiles clean for all three
+  boards, but the final link stops on nine missing SDL2 functions:
+  `SDL_CloseAudio`, `SDL_GL_DeleteContext`, `SDL_GetDisplayDPI`,
+  `SDL_GetKeyboardFocus`, `SDL_GetWindowWMInfo`, `SDL_GL_GetDrawableSize`,
+  `SDL_Vulkan_GetDrawableSize`, `SDL_OpenURL`, `SDL_SetTextInputRect`. Seven
+  of the nine are needed because EDuke32 vendors dear imgui and calls its
+  SDL2 backend — `ImGui_ImplSDL2_NewFrame`, `ImGui_ImplSDL2_ProcessEvent` —
+  unconditionally, every frame and every event, for any SDL2 build; only the
+  OpenGL renderer backend inside imgui is gated by `USE_OPENGL`, not the
+  subsystem as a whole. `SDL_CloseAudio` is a one-line gap next to the
+  `SDL_CloseAudioDevice` circle-libsdl2 already has. `SDL_GL_DeleteContext`
+  is dead code on this board — no GL context is ever created — but the
+  symbol still has to resolve. None of the nine belong in this repository:
+  circle-libsdl2 is the SDL2 layer, and this is what it still owes this
+  port.
 - **It has never been seen to run.** Nothing in this repository has been
-  observed drawing a frame on a real screen. Serial output is not gameplay,
-  and until somebody has watched Duke's first level appear on a display,
-  this is a program that compiles and links, not a game that works.
+  observed drawing a frame on a real screen, because nothing here has linked
+  yet. Serial output would not be gameplay either, and until somebody has
+  watched Duke's first level appear on a display, this is not a game that
+  works.
 - **Nothing about performance is known.** The classic renderer costs time
   for every pixel it draws, on one core, with no acceleration of any kind.
   The image starts at 320 by 200 — the size the game was drawn for — and the

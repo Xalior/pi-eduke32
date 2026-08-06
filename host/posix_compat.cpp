@@ -33,11 +33,13 @@
 #include <cstring>
 #include <ctime>
 #include <fcntl.h>
+#include <malloc.h>
 #include <pthread.h>
 #include <pwd.h>
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <execinfo.h>
@@ -239,6 +241,30 @@ int ioctl(int, unsigned long, ...)
 }
 
 // ---------------------------------------------------------------------------
+// Process spawning
+// ---------------------------------------------------------------------------
+//
+// Reached only through dear imgui's default "open this in the shell"
+// callback, which forks, execvp's a browser, and waitpid's on it. Nothing in
+// this game ever asks to open a path in the shell — there is no shell — so
+// this pair exists for the link, not for the call. fork() already answers
+// "no such capability" here (newlib's own stub), which sends the caller down
+// the "could not fork" path before either of these would run; they answer
+// the same way for a caller that somehow reaches them regardless.
+
+int execvp(const char *, char *const[])
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+pid_t waitpid(pid_t, int *, int)
+{
+    errno = ECHILD;
+    return -1;
+}
+
+// ---------------------------------------------------------------------------
 // The password file
 // ---------------------------------------------------------------------------
 //
@@ -248,6 +274,14 @@ int ioctl(int, unsigned long, ...)
 // all inside RAPI_GAME_DIR, which the kernel makes the working directory
 // before the game starts. Answering "no such user" sends the caller down its
 // own null-result path, which is where it should be.
+
+// Bgethomedir asks for this only after checking $HOME, purely to feed it
+// into getpwuid — any value does, since getpwuid answers "no such user"
+// regardless of which uid it is asked about.
+uid_t getuid(void)
+{
+    return 0;
+}
 
 struct passwd *getpwuid(uid_t)
 {
@@ -450,6 +484,33 @@ int msync(void *, size_t, int)
 // There is no protection to change, so asking for one is not an error.
 int mprotect(void *, size_t, int)
 {
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Aligned allocation
+// ---------------------------------------------------------------------------
+//
+// The Build engine's bundled async task library asks for its structures at
+// cache-line alignment. Circle's own heap already gives every block that
+// alignment or better — HEAP_BLOCK_ALIGN is DATA_CACHE_LINE_LENGTH_MAX, the
+// same 64 bytes this library asks for — so malloc, Circle's memalign() and
+// this function all hand out interchangeable, plain free()-able blocks. The
+// alignment argument only ever needs checking against that ceiling.
+int posix_memalign(void **memptr, size_t alignment, size_t size)
+{
+    if (memptr == nullptr
+        || alignment % sizeof(void *) != 0
+        || (alignment & (alignment - 1)) != 0)
+    {
+        return EINVAL;
+    }
+
+    void *p = memalign(alignment, size);
+    if (p == nullptr)
+        return ENOMEM;
+
+    *memptr = p;
     return 0;
 }
 
