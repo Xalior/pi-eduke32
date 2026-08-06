@@ -105,8 +105,10 @@ another means or fails honestly — nothing pretends to work.
 | `mmap` / `munmap` | reads the file into ordinary memory and frees it afterwards. There is no memory manager to map with, so a mapping is a private copy and `msync` says so by failing |
 | `pthread_self`, `pthread_once`, thread-local keys, thread names | the logging library asks the calling thread to identify itself. There is one, and these give a consistent account of it |
 | `backtrace` | reports zero frames, which is the truth: there is no unwinder to walk and no symbol table in the image to name |
-| `getpwuid` | reports no such user. There is no user and no home directory; the game's files are all in one place |
+| `getpwuid`, `getuid` | reports no such user. There is no user and no home directory; the game's files are all in one place |
 | `ioctl` | fails. It is reached only through a header, and no code that would call it is compiled |
+| `posix_memalign` | delegates to Circle's own `memalign()`, which already returns every block aligned to the processor's cache line — the same guarantee `malloc()` gives, and the same free()-compatible block |
+| `execvp`, `waitpid` | fail. Reached only through dear imgui's default "open this in the shell" callback, which nothing in this game ever asks for |
 
 ### A file type on directory entries
 
@@ -120,6 +122,17 @@ reports whether an entry is a directory, so an entry read from the core the
 game runs on carries a real answer. An entry read on the hardware core comes
 straight from the C library, which does not know, and is reported as
 `DT_UNKNOWN` rather than guessed at.
+
+`opendir`, `readdir`, `closedir` and `rewinddir` are wrapped with `--wrap` so
+every call reaches the graphics layer's file service instead of driving
+FatFs from whichever core called it. Newlib defines a fifth function,
+`readdir_r`, in the same translation unit as the other four — so the kernel
+image carries it too, dead weight pulled in by the object file rather than
+by name. Nothing in this game, this project, or the graphics layer calls
+`readdir_r`; it is not wrapped, and if anything ever did call it, it would
+reach FatFs directly from whatever core called it, off core 0. Worth
+checking again if a future change adds a directory scan through a different
+path.
 
 ### An 8-bit surface
 
@@ -264,27 +277,30 @@ repository and everything in it without an account.
 
 ## State of this port
 
-Read this section before expecting the game to build, let alone run.
+Read this section before expecting the game to run.
 
-- **It does not link yet.** Every source file compiles clean for all three
-  boards, but the final link stops on seven missing SDL2 functions:
+- **The whole game compiles and links clean for all three boards, but for
+  one symbol.** `SDL_GL_DeleteContext` is the last thing circle-libsdl2 owes
+  this port. It is dead code on this board — `sdlayer.cpp` calls it only
+  from `if (sdl_context) SDL_GL_DeleteContext(sdl_context);` in its shutdown
+  path, and `sdl_context` is always null here, since `USE_OPENGL` is unset
+  and no GL context is ever created — but the symbol still has to resolve
+  for the link to complete. `SDL_GL_CreateContext` is not in circle-libsdl2
+  either, which reads as GL context management never having been in the
+  shim's scope at all, rather than an oversight. Neither belongs in this
+  repository: circle-libsdl2 is the SDL2 layer, and this is what it still
+  owes this port. (A longer list — `SDL_CloseAudio`, `SDL_OpenURL`,
   `SDL_GetDisplayDPI`, `SDL_GetKeyboardFocus`, `SDL_GetWindowWMInfo`,
-  `SDL_GL_DeleteContext`, `SDL_GL_GetDrawableSize`, `SDL_SetTextInputRect`,
-  `SDL_Vulkan_GetDrawableSize`. Six of the seven are needed because EDuke32
-  vendors dear imgui and calls its SDL2 backend —
-  `ImGui_ImplSDL2_NewFrame`, `ImGui_ImplSDL2_ProcessEvent` — unconditionally,
-  every frame and every event, for any SDL2 build; only the OpenGL renderer
-  backend inside imgui is gated by `USE_OPENGL`, not the subsystem as a
-  whole. `SDL_GL_DeleteContext` is dead code on this board — no GL context
-  is ever created — but the symbol still has to resolve. None of the seven
-  belong in this repository: circle-libsdl2 is the SDL2 layer, and this is
-  what it still owes this port. (Two more, `SDL_CloseAudio` and
-  `SDL_OpenURL`, were in this list until circle-libsdl2 added them.)
-- **It has never been seen to run.** Nothing in this repository has been
-  observed drawing a frame on a real screen, because nothing here has linked
-  yet. Serial output would not be gameplay either, and until somebody has
-  watched Duke's first level appear on a display, this is not a game that
-  works.
+  `SDL_GL_GetDrawableSize`, `SDL_SetTextInputRect`,
+  `SDL_Vulkan_GetDrawableSize` — was in this section until circle-libsdl2
+  added them; dear imgui's SDL2 backend, called unconditionally every frame
+  and every event for any SDL2 build, needed most of it.)
+- **Nothing has run on hardware.** No image built from this repository has
+  been pushed to a board, and nothing in it has been observed drawing a
+  frame on a real screen — it has not yet had the chance to. Serial output
+  would not be gameplay either; until somebody has watched Duke's first
+  level appear on a display, this is not a game that works, only one that
+  builds.
 - **Nothing about performance is known.** The classic renderer costs time
   for every pixel it draws, on one core, with no acceleration of any kind.
   The image starts at 320 by 200 — the size the game was drawn for — and the
