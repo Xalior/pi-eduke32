@@ -1,0 +1,73 @@
+#
+# Raspberry Pi firmware boot configuration for pi-chocolate-doom.
+#
+# One file for all three boards. The firmware reads the model section that
+# matches the board it is running on and boots the image named there, so a
+# card or a netboot directory holding all three images serves any of them.
+#
+# Derived from Circle's boot/config64.txt. The Compute Modules are pinned to
+# their board's image explicitly: stock config64.txt leaves [cm4] with only
+# otg_mode=1 and no kernel line, so a CM4 — the same silicon as a Pi 4 —
+# falls through to the default kernel8.img, which is the Pi 3 build, and runs
+# the wrong architecture.
+#
+
+arm_64bit=1
+kernel_address=0x80000
+initial_turbo=0
+
+# Overscan is the firmware inset that keeps a picture clear of a CRT's
+# hidden edges: it shrinks the output and surrounds it with black. Every
+# display this reaches is digital and shows its whole signal, so the inset
+# only ever costs picture — measured on a Pi 4 as a border on all four
+# sides, present in the boot console as well as the game.
+disable_overscan=1
+
+# --- Pi 3 world (BCM2837): kernel8.img ---
+
+# Zero 2 W
+[pi02]
+kernel=kernel8.img
+
+# Pi 2 v1.2 (BCM2837, the only 64-bit-capable Pi 2)
+[pi2]
+kernel=kernel8.img
+
+[pi3]
+kernel=kernel8.img
+
+[pi3+]
+kernel=kernel8.img
+
+# Compute Module 3
+[cm3]
+kernel=kernel8.img
+
+# --- Pi 4 world (BCM2711): kernel8-rpi4.img ---
+
+[pi4]
+armstub=armstub8-rpi4.bin
+kernel=kernel8-rpi4.img
+max_framebuffers=2
+
+# Compute Module 4 — same silicon as the Pi 4
+[cm4]
+otg_mode=1
+armstub=armstub8-rpi4.bin
+kernel=kernel8-rpi4.img
+max_framebuffers=2
+
+# --- Pi 5 world (BCM2712): kernel_2712.img ---
+
+[pi5]
+kernel=kernel_2712.img
+# The Pi 5 hands our kernel a surface it already made, so no mode is named
+# here and the depth is asked for at boot. Other boards request both.
+framebuffer_depth=32
+framebuffer_ignore_alpha=1
+
+# Compute Module 5
+[cm5]
+kernel=kernel_2712.img
+framebuffer_depth=32
+framebuffer_ignore_alpha=1

@@ -1,0 +1,1 @@
+socmaxtemp=70

@@ -1,0 +1,167 @@
+# pi-eduke32 CI — the stranger test.
+#
+# Everything here is built from the published sources alone, on a machine that
+# has never seen this project: clone, toolchain, dependencies, kernels.
+#
+# The trigger is narrow on purpose. A cold dependency build compiles newlib
+# and libc++ from source and clones part of an LLVM tree, so it is not
+# something to run on every push:
+#
+#   - a version tag (v*) whose commit is on main — a release being cut;
+#   - any push to the `ci` branch, for when you want the signal without a tag;
+#   - a run started by hand from the Actions page.
+#
+# A tag is not branch-scoped in git, so a v-tag pointing anywhere else builds
+# nothing and says why.
+#
+# No game data is fetched here, ever. Duke Nukem 3D's GRP is not part of this
+# project and is not this project's to distribute; what this workflow produces
+# is the three board images and nothing else.
+
+name: build
+
+on:
+  push:
+    tags: ['v*']
+    branches: ['ci']
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Pinned to the release the project builds with. The directory name doubles
+  # as the cache key.
+  ARM_RELEASE: arm-gnu-toolchain-15.2.rel1-x86_64-aarch64-none-elf
+  ARM_URL: https://developer.arm.com/-/media/Files/downloads/gnu/15.2.rel1/binrel/arm-gnu-toolchain-15.2.rel1-x86_64-aarch64-none-elf.tar.xz
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    # ONE JOB PER BOARD. Each board has its own circle-stdlib world, compiled
+    # for its own processor, and building all three on one runner needs more
+    # disk than a runner has. So a runner builds one board and keeps only
+    # that board's world.
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [rpi3, rpi4, rpi5]
+
+    steps:
+      - name: Checkout (recursive, shallow submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      # The runner ships around 25GB of toolchains this build never touches,
+      # on the filesystem that holds the workspace. Reclaim first and fail on
+      # a full disk rather than at 90%.
+      - name: Reclaim disk
+        run: |
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          echo "after:";  df -h / | tail -1
+
+      # A tag is not branch-scoped: a v-tag on any commit fires this workflow.
+      # Only tags pointing into main's history build.
+      - name: Require the tagged commit to be on main
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          git fetch --unshallow origin +refs/heads/main:refs/remotes/origin/main \
+            || git fetch origin +refs/heads/main:refs/remotes/origin/main
+          if git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "tag $GITHUB_REF_NAME is on main — building"
+          else
+            echo "tag $GITHUB_REF_NAME is not on main — side-branch tags build nothing"
+            exit 1
+          fi
+
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential make wget python3
+
+      # Keyed on the release name: a hit skips the download and unpack.
+      - name: Cache Arm toolchain
+        id: cache-toolchain
+        uses: actions/cache@v4
+        with:
+          path: toolchain
+          key: ${{ env.ARM_RELEASE }}
+
+      - name: Fetch Arm toolchain
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p toolchain
+          wget -q -O arm.tar.xz "$ARM_URL"
+          tar -xf arm.tar.xz -C toolchain --strip-components=1
+          rm -f arm.tar.xz
+
+      # The build looks on PATH first, so this is all the wiring it needs.
+      - name: Put the toolchain on PATH
+        run: echo "$GITHUB_WORKSPACE/toolchain/bin" >> "$GITHUB_PATH"
+
+      # What identifies this board's world: the shim's pin, because the world
+      # is a submodule inside it, and the recipe that builds it.
+      - name: Resolve cache key
+        id: keys
+        run: |
+          echo "sdl2=$(git -C circle-libsdl2 rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "recipe=$(sha256sum circle-libsdl2/Makefile | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      # The expensive thing, and the reason the trigger is narrow: newlib and
+      # libc++ compiled from source.
+      #
+      # The WHOLE world is cached, minus the LLVM source — that is gigabytes
+      # which has done its job once libc++ is installed, and caching it would
+      # crowd out the world it produced. Everything else has to travel
+      # together: configure writes a settings file for circle-stdlib AND
+      # another for Circle itself, and a build that finds only the first one
+      # falls back to the 32-bit toolchain and looks for a compiler nobody
+      # installed.
+      - name: Cache this board's world
+        id: cache-world
+        uses: actions/cache@v4
+        with:
+          path: |
+            circle-libsdl2/circle-stdlib-${{ matrix.board }}
+            !circle-libsdl2/circle-stdlib-${{ matrix.board }}/libs/llvm-project
+            circle-libsdl2/libSDL2-${{ matrix.board }}.a
+          key: world-${{ matrix.board }}-${{ steps.keys.outputs.sdl2 }}-${{ steps.keys.outputs.recipe }}
+
+      - name: Build this board's dependencies
+        if: steps.cache-world.outputs.cache-hit != 'true'
+        run: make deps-${{ matrix.board }}
+
+      # Reclaim the LLVM checkout: libc++ is built and installed by now, and
+      # the source is the largest thing on the disk. The world's own entry is
+      # a link into the shared checkout, so both go.
+      - name: Drop the LLVM checkout
+        run: |
+          rm -rf circle-libsdl2/circle-stdlib-${{ matrix.board }}/libs/llvm-project
+          rm -rf ../circle-llvm
+
+      - name: Build this board's kernel
+        run: make ${{ matrix.board }}
+
+      # Truth gate: ask the filesystem. An image that is missing or empty
+      # fails here even when the build claimed success.
+      - name: Verify the image
+        run: make verify BOARDS=${{ matrix.board }}
+
+      - name: Upload this board's image
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-${{ matrix.board }}
+          path: host/build/${{ matrix.board }}/
+          if-no-files-found: error

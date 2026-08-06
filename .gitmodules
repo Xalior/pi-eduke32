@@ -1,0 +1,6 @@
+[submodule "eduke32"]
+	path = eduke32
+	url = https://voidpoint.io/terminx/eduke32.git
+[submodule "circle-libsdl2"]
+	path = circle-libsdl2
+	url = https://github.com/Xalior/circle-libsdl2.git
