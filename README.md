@@ -20,17 +20,18 @@ There are two kinds of GRP:
 - **The shareware GRP.** Duke Nukem 3D's first episode was released as
   shareware in 1996 and its data file may be freely copied and shared. This
   is the one to use if you do not own the game. It is about 11 MB and
-  contains the first episode, *L.A. Meltdown*.
+  contains the first episode, *L.A. Meltdown*. `make media` fetches this one
+  for you — see [Game data, and `make media`](#game-data-and-make-media)
+  below.
 - **The full GRP**, from a copy of the game you bought. It contains all the
-  episodes.
+  episodes. This one is not fetched by anything here; you supply it.
 
-Either one works. Put it in the game's directory on the card (see
-[The card](#the-card) below) and the game will find it.
+Either one works. Run `make card` and it ends up in the game's directory on
+the card (see [The card](#the-card) below).
 
-**This project downloads nothing.** It will not fetch a GRP for you, and it
-contains no instructions for obtaining one by working around a licence, a
-paywall or a shop. If you do not have the data, the game will say so and
-stop.
+**Nothing in this project circumvents a licence, a paywall or a shop.** The
+full GRP is a commercial product; if you do not have it, use the shareware
+GRP or supply your own.
 
 ## The renderer: software only
 
@@ -162,13 +163,58 @@ make deps-rpi4
 make rpi4
 ```
 
+## Game data, and `make media`
+
+**This repository ships no game data, and `make card` never downloads
+anything.** Two directories, and the difference between them matters:
+
+| | |
+|---|---|
+| `media/` | Where game data lives on your machine. `make media` downloads into it; you copy your own files into it by hand. It is never committed and never shipped. |
+| `build/sd-card/` | What `make card` stages. It **copies from `media/`** and fetches nothing. |
+
+`make card` works whether or not `media/` has anything in it. A card built
+with no data is a real card — it just says plainly that the GRP is missing.
+
+```
+make media
+```
+
+fetches exactly one file, with `curl`:
+
+**`DUKE3D.GRP`** — the shareware release of Duke Nukem 3D's first episode,
+*L.A. Meltdown*, version 1.1. 3D Realms distributed it free of charge in
+1996, and eduke32's own project still points to it as the legitimate
+no-cost way to run the engine:
+
+```
+https://archive.org/download/3D_Realms_Duke_Nukem_3D_Shareware/3D%20Realms%20-%20Duke%20Nukem%203D%20%28Shareware%20Version%29.zip
+```
+
+What arrives is checked against two hashes: the MD5 published independently
+of this download — it is the well-documented checksum of the v1.1 shareware
+GRP, listed on eduke32's own wiki FAQ — and a SHA256 computed from the file
+this project fetched, so a later fetch is known to be identical. If either
+does not match, the target stops rather than handing you a file to put on a
+card. A `provenance.txt` is written beside it recording the URL, the date,
+the licence and both hashes. Running it again re-verifies what is already
+there instead of downloading it a second time.
+
+**The full, commercial GRP is not fetched by anything here.** If you own
+Duke Nukem 3D — GOG or Steam both sell *Duke Nukem 3D: 20th Anniversary
+World Tour*, DRM-free once installed — copy your own `DUKE3D.GRP` into
+`media/`. `make card` picks it up from there, in place of the shareware one.
+
+Read this section before you run it. It is your machine and your
+responsibility.
+
 ## The card
 
 ```
 make card
 ```
 
-stages everything except the game data into `build/sd-card/`:
+stages the whole card into `build/sd-card/`:
 
 ```
 kernel8.img              the Pi 3 image
@@ -176,11 +222,13 @@ kernel8-rpi4.img         the Pi 4 image
 kernel_2712.img          the Pi 5 image
 config.txt               tells the firmware which image this board boots
 cmdline.txt              boot settings
-games/eduke32/           the game's own directory
+games/eduke32/           the game's own directory, including DUKE3D.GRP if
+                          media/ holds one
 ```
 
 Copy that onto a FAT-formatted card together with the Raspberry Pi firmware
-files, **put your `DUKE3D.GRP` in `games/eduke32/`**, and boot it.
+files, and boot it. If `media/` held no GRP, `make card` says so plainly —
+put one in `games/eduke32/DUKE3D.GRP` on the card by hand before booting it.
 
 Everything the game reads or writes stays inside `games/eduke32/`. One card
 can carry several of these games, and each keeps to its own directory so
