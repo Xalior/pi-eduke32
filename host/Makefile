@@ -70,7 +70,7 @@ TARGET = $(OBJDIR)/$(IMAGE)
 # storage mmulti.cpp would otherwise own, and this port's own SDL layer:
 # C++, and this project's own code.
 HOST_SRCS = main.cpp kernel.cpp defaults.cpp circle_syscalls.cpp \
-	posix_compat.cpp circle_stubs.cpp duke_globals.cpp
+	posix_compat.cpp duke_globals.cpp
 HOST_OBJS = $(addprefix $(OBJDIR)/,$(HOST_SRCS:.cpp=.o))
 
 # ---------------------------------------------------------------------------
@@ -315,23 +315,25 @@ WRAPPED_SYSCALLS = \
 # Two SDL functions the shim owns and this port extends
 # ---------------------------------------------------------------------------
 #
-# circle-libsdl2 implements SDL_CreateRGBSurface and SDL_FreeSurface for
-# 32-bit surfaces and refuses anything else. The Build engine's frame buffer
-# is 8-bit paletted, so this port adds that case — and adding it means
-# intercepting the pair, because a surface with a palette cannot be freed by
-# a function that knows nothing about palettes.
+# NO SDL IS WRAPPED. The Build engine's frame buffer is 8-bit paletted, and
+# this port used to intercept SDL_CreateRGBSurface and SDL_FreeSurface to add
+# that case — the library did not have it, and a surface with a palette
+# cannot be freed by a function that knows nothing about palettes.
 #
-# --wrap for the same reason as the syscalls above: it leaves the library's
-# implementations in place and reachable as __real_*, so the wrapper in
-# circle_stubs.cpp handles the paletted case and hands every other one
-# straight back. A plain redefinition would collide with the archive, which
-# is linked whole precisely so that it does.
-WRAPPED_SDL = SDL_CreateRGBSurface SDL_FreeSurface
+# circle-libsdl2 does paletted surfaces now: the format reports 8 bits, the
+# palette is allocated with the surface and freed with it, and blitting,
+# conversion and colour keys all resolve through it. So the pair is gone and
+# the engine reaches the library's own implementations directly.
+#
+# Worth knowing if SDL ever needs wrapping again: --wrap slips past the
+# --whole-archive check below. It renames an undefined reference rather than
+# defining a duplicate, so a wrapper is invisible to the duplicate-symbol
+# test that catches every other kind of private SDL.
 
 # The link is driven by the cross ld directly (Circle's Rules.mk sets
 # LD = <prefix>ld for GCC builds), so these are plain linker options, not
 # compiler-driver -Wl, ones.
-LDFLAGS += $(addprefix --wrap=,$(WRAPPED_SYSCALLS) $(WRAPPED_SDL))
+LDFLAGS += $(addprefix --wrap=,$(WRAPPED_SYSCALLS))
 
 # ---------------------------------------------------------------------------
 # Compilation
