@@ -3,10 +3,19 @@
 //
 // Device ownership: this kernel brings up interrupts, the timer, a serial
 // console carrying stdio, the SD card (FatFs, holding the GRP and the
-// configuration files) and the cooperative scheduler. Video, USB input and
-// audio belong to circle-libsdl2 and are created inside SDL_Init when the
-// game calls it. So do the CPU clock and the case fan, which the shim
-// manages for its host; this kernel only says when they come up.
+// configuration files), the USB host controller and the cooperative
+// scheduler. Video and audio belong to circle-libsdl2 and are created inside
+// SDL_Init when the game calls it. So do the CPU clock and the case fan,
+// which the shim manages for its host; this kernel only says when they come
+// up.
+//
+// USB IS THIS KERNEL'S, and it is brought up in Initialize with everything
+// else, before the split arms and before the game's first instruction. The
+// shim finds the controller and pumps it; it never builds one. It cannot: the
+// shim's device work is marshalled to core 0's servo, and the servo is what
+// makes core 0 answer anybody, so a bring-up that runs there and takes its
+// time stops the machine. Bring-up belongs where it can take as long as it
+// likes, and that is here.
 //
 // Core roles, and the reason there are three of them:
 //
@@ -40,6 +49,7 @@
 #include <circle/multicore.h>
 #include <circle/memory.h>
 #include <circle/types.h>
+#include <circle/usb/usbhcidevice.h>
 #include <SDCard/emmc.h>
 #include <fatfs/ff.h>
 #include <SDL2/SDL_circle.h>
@@ -83,6 +93,10 @@ private:
     CEMMCDevice         m_EMMC;
     FATFS               m_FileSystem;
     CConsole            m_Console;
+    // The USB host controller, with plug-and-play on so a keyboard or a pad
+    // connected after boot is still found. Initialised in Initialize(); the
+    // shim pumps it from core 0's servo once the split is armed.
+    CUSBHCIDevice       m_USB;
     // The shim's board hardware — the CPU clock and, where cmdline.txt names
     // a fan pin, the case fan. Declared here rather than left to SDL_Init so
     // the clock is already at maximum while this kernel builds its world: the

@@ -150,7 +150,8 @@ CKernel::CKernel(void)
       m_Timer(&m_Interrupt),
       m_Logger(m_Options.GetLogLevel(), &m_Timer),
       m_EMMC(&m_Interrupt, &m_Timer, &m_ActLED),
-      m_Console(&m_Serial, &m_Serial)     // stdio over the UART
+      m_Console(&m_Serial, &m_Serial),    // stdio over the UART
+      m_USB(&m_Interrupt, &m_Timer, TRUE /* plug-and-play */)
 {
     m_ActLED.Blink(3);
 }
@@ -198,6 +199,21 @@ boolean CKernel::Initialize(void)
     if (bOK) bOK = (f_mount(&m_FileSystem, "SD:", 1) == FR_OK);
     if (bOK) bOK = m_Console.Initialize();
     if (bOK) CGlueStdioInit(m_Console);
+
+    // USB, here and not in the game's SDL_Init.
+    //
+    // Enumeration is slow, interrupt-driven and free to take as long as it
+    // needs — right here, on core 0, with the whole machine to itself and
+    // nothing yet depending on it answering. That is exactly what it is NOT
+    // once the split is armed: from then on core 0's servo is the only thing
+    // answering the other cores, and a long call inside it stops everything.
+    //
+    // Not fatal. A board with no working USB still runs the game, just with
+    // no keyboard and no pad, and that is worth saying rather than dying for.
+    if (bOK && !m_USB.Initialize())
+        m_Logger.Write(From, LogWarning,
+                       "USB did not come up — the game will run without a "
+                       "keyboard or a game pad");
 
     // Core 0 runs application and library code like any other core, so it
     // arms itself too — before the secondary cores start, and before the
