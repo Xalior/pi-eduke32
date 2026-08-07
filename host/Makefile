@@ -37,7 +37,20 @@ include ../mk/toolchain.mk
 
 RAPI_BOARD ?= rpi5
 
-include ../circle-libsdl2/circle-stdlib-$(RAPI_BOARD)/Config.mk
+# WHERE THE BUILT WORLD COMES FROM.
+#
+# The default is this game's own nested shim, so a clone of this repository
+# alone builds and uses its own worlds and nothing needs setting. A parent
+# that keeps ONE set of built worlds for several games — they are gigabytes
+# each, and identical when the pin and the configuration match — points
+# CIRCLE_WORLDS at them.
+#
+# Named before the include below rather than beside SHIM further down,
+# because make reads an include when it reaches it.
+CIRCLE_WORLDS ?= ../circle-libsdl2
+WORLD = $(CIRCLE_WORLDS)/circle-stdlib-$(RAPI_BOARD)
+
+include $(WORLD)/Config.mk
 
 ROOT = ..
 SHIM = $(ROOT)/circle-libsdl2
