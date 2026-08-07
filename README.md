@@ -295,18 +295,27 @@ Read this section before expecting the game to run.
   `SDL_Vulkan_GetDrawableSize` — was in this section until circle-libsdl2
   added them; dear imgui's SDL2 backend, called unconditionally every frame
   and every event for any SDL2 build, needed most of it.)
-- **Nothing has run on hardware.** No image built from this repository has
-  been pushed to a board, and nothing in it has been observed drawing a
-  frame on a real screen — it has not yet had the chance to. Serial output
-  would not be gameplay either; until somebody has watched Duke's first
-  level appear on a display, this is not a game that works, only one that
-  builds.
+- **It runs on a Pi 5, and nothing has been seen on a screen yet.** The game
+  starts, reads its GRP, compiles its scripts and reaches its main loop, and
+  it stays there. Nobody has yet watched Duke's first level appear on a
+  display, and serial output is not gameplay: until somebody has, this is a
+  game that runs, not one that works. The Pi 3 and the Pi 4 have not been
+  tried at all.
+- **The picture is 640 by 480, because that is the smallest the engine
+  accepts.** EDuke32 screens every display mode against its own minimum of
+  640 by 480 and discards anything below it, and this port gives the game one
+  display mode: the virtual display `host/kernel.cpp` declares. Declared
+  smaller — at 320 by 200, the raster the game was drawn for — the mode list
+  came out empty, and an empty mode list is not an error to EDuke32: its
+  start-up skips setting a video mode, skips saying that it could not, and
+  skips starting sound as well, so the game runs on with no window, no
+  picture and no audio.
 - **Nothing about performance is known.** The classic renderer costs time
-  for every pixel it draws, on one core, with no acceleration of any kind.
-  The image starts at 320 by 200 — the size the game was drawn for — and the
-  graphics layer scales that up to the panel. Whether a Pi 3 can hold a
-  playable frame rate at that size, and how much larger a Pi 5 can go, are
-  open questions that only the hardware can answer.
+  for every pixel it draws, on one core, with no acceleration of any kind,
+  and 640 by 480 is nearly five times the pixels of the size the game was
+  drawn for. The graphics layer scales that up to the panel. Whether a Pi 3
+  can hold a playable frame rate at that size, and how much larger a Pi 5 can
+  go, are open questions that only the hardware can answer.
 - **Sound is untested**, and music is MIDI through the OPL3 emulation only.
 
 ## Licences

@@ -239,12 +239,33 @@ TShutdownMode CKernel::Run(void)
     // panel is really scanning, and the library carries each frame from here
     // to there in one pass on the presentation core.
     //
-    // 320x200 is the raster Duke Nukem 3D was drawn for and the shape the
-    // Build engine's classic renderer is cheapest at: that renderer costs
-    // time per pixel it draws, all of it on one core, and nothing about it
-    // is accelerated here. EDuke32 takes its own resolution from what SDL
-    // reports as the desktop mode, which is exactly this, so declaring it
-    // here is what configures the game.
+    // 640x480 IS THE SMALLEST PICTURE EDUKE32 WILL ACCEPT, and that is what
+    // decides this number. The engine screens every display mode through
+    // SDL_CHECKMODE (source/build/include/sdlayer.h), which rejects anything
+    // narrower than MINXDIM or shorter than MINYDIM — 640 and 480 in the
+    // build this port compiles (source/build/include/build.h). This library
+    // reports the declared virtual device as the one display mode there is,
+    // so a declaration below that floor is rejected by the engine's own
+    // screening and the game is left with an EMPTY mode list.
+    //
+    // An empty list fails silently, which is why this is written down at
+    // length. The start-up path in G_Startup is guarded by
+    // `validmodecnt > 0`, so with no modes it does not set a video mode, does
+    // not report that it could not, AND DOES NOT START SOUND EITHER — the
+    // game reaches its main loop and runs, with no window, no picture and no
+    // audio, complaining about nothing but the sounds it cannot play.
+    //
+    // 320x200, the raster Duke Nukem 3D was drawn for, is below that floor
+    // and cannot be given to this engine. What it bought was cost: the
+    // classic renderer pays for every pixel it draws, on one core, with no
+    // acceleration of any kind, and 640x480 is nearly five times the pixels.
+    // Whether that holds a playable frame rate on any of these boards is not
+    // known.
+    //
+    // The game takes its own resolution from what SDL reports as the desktop
+    // mode, which is exactly this, so declaring it here is what configures
+    // the game. A settings file on the card asking for something else is
+    // snapped to the nearest mode in the list rather than honoured.
     //
     // The depth is 32 because that is what the game hands back. The classic
     // renderer draws into its own 8-bit buffer and converts it through the
@@ -252,8 +273,8 @@ TShutdownMode CKernel::Run(void)
     //
     // The library has no default and no fallback: without this it refuses to
     // start.
-    static const int VIRTUAL_WIDTH  = 320;
-    static const int VIRTUAL_HEIGHT = 200;
+    static const int VIRTUAL_WIDTH  = 640;
+    static const int VIRTUAL_HEIGHT = 480;
     if (SDL2Circle_DeclareVirtualDevice(32, VIRTUAL_WIDTH, VIRTUAL_HEIGHT) != 0)
     {
         m_Logger.Write(From, LogError, "virtual display %dx%d refused: %s",
