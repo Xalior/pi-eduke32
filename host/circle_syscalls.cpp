@@ -101,7 +101,7 @@ namespace
 
 // Are we the core that owns the hardware? Before the split is armed there
 // is only one core and the answer is always yes, which is what makes this
-// file inert on a single-core boot and under rapi-split=0.
+// file inert on a single-core boot.
 inline bool OnHardwareCore(void)
 {
     if (!SDL2Circle_SplitActive())

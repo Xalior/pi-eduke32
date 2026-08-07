@@ -216,8 +216,7 @@ boolean CKernel::Initialize(void)
     // core 0 will be busy serving them from the moment they run. They park
     // in CSplitCores::Run until Run() below arms the split and opens the
     // gate.
-    m_bSplit = m_Options.GetAppOptionDecimal("rapi-split", 1) != 0;
-    if (bOK && m_bSplit) bOK = m_Cores.Initialize();
+    if (bOK) bOK = m_Cores.Initialize();
     return bOK;
 }
 
@@ -292,8 +291,8 @@ TShutdownMode CKernel::Run(void)
     // file into the root would each silently overwrite the other's.
     //
     // Done here, on core 0, before the application core is released: the
-    // working directory is one global that both the split and the
-    // everything-on-core-0 path inherit, so this covers each of them once.
+    // working directory is one global, so setting it here covers the
+    // application core too.
     // A failure is worth saying out loud but is not fatal — the game will
     // simply look where it was pointed by argv instead.
     if (chdir(RAPI_GAME_DIR) != 0)
@@ -320,34 +319,23 @@ TShutdownMode CKernel::Run(void)
     // SDL2Circle_SetPerfInterval gets called (see defaults.cpp).
 
     int res;
-    if (m_bSplit)
-    {
-        m_Logger.Write(From, LogNotice,
-                       "core split: hardware core 0, application core 1, presentation core 2");
+    m_Logger.Write(From, LogNotice,
+                   "core split: hardware core 0, application core 1, presentation core 2");
 
-        // Arm the split before the application's first instruction: the
-        // servo and watchdog on core 0, and the mailboxes every marshalled
-        // call rides. Then open the gate.
-        SDL2Circle_SplitInit();
-        s_AppGate.store(1, std::memory_order_release);
-        PublishToOtherCores();
+    // Arm the split before the application's first instruction: the
+    // servo and watchdog on core 0, and the mailboxes every marshalled
+    // call rides. Then open the gate.
+    SDL2Circle_SplitInit();
+    s_AppGate.store(1, std::memory_order_release);
+    PublishToOtherCores();
 
-        // Core 0's idle loop for the whole run. Yielding is not politeness
-        // here: the servo task is what answers the application core, feeds
-        // the sound device and pumps USB, and it only runs when this loop
-        // gives it the core.
-        while (!s_AppDone.load(std::memory_order_acquire))
-            m_Scheduler.Yield();
-        res = s_AppResult;
-    }
-    else
-    {
-        // rapi-split=0: everything on core 0, the library's degenerate
-        // path. The secondary cores were never started.
-        m_Logger.Write(From, LogNotice,
-                       "core split disabled (rapi-split=0): everything on core 0");
-        res = eduke32_main(s_FinalArgc, const_cast<char **>(s_FinalArgv));
-    }
+    // Core 0's idle loop for the whole run. Yielding is not politeness
+    // here: the servo task is what answers the application core, feeds
+    // the sound device and pumps USB, and it only runs when this loop
+    // gives it the core.
+    while (!s_AppDone.load(std::memory_order_acquire))
+        m_Scheduler.Yield();
+    res = s_AppResult;
 
     // Park instead of rebooting. A reboot stops the clocks with the UART
     // FIFO still draining, so the exit line reaches the bench truncated —
