@@ -176,7 +176,16 @@ STANDARD = -std=gnu++17
 # reconstruction.
 OPTIMIZE = -O2
 
+# Circle's Rules.mk defines a link rule for $(TARGET).img with its own linker
+# script; sdl-app.mk below defines the one this port actually uses. Two
+# recipes for one target makes make warn on every board of every build — a
+# warning that reads like a fault and is not one. Pointing TARGET at a name
+# nothing builds while Rules.mk is read attaches its rule there instead, so
+# there is only ever one recipe for the image.
+SDL_APP_IMAGE := $(TARGET)
+TARGET := $(OBJDIR)/.circle-unused
 include $(CIRCLEHOME)/Rules.mk
+TARGET := $(SDL_APP_IMAGE)
 
 # The world must be the multicore one circle-libsdl2 configures: the shim's
 # core-split machinery cannot exist without it, and an object compiled
