@@ -53,6 +53,7 @@
 #include <SDCard/emmc.h>
 #include <fatfs/ff.h>
 #include <SDL2/SDL_circle.h>
+#include <diskcache.h>
 
 enum TShutdownMode
 {
@@ -91,6 +92,14 @@ private:
     CLogger             m_Logger;
     CScheduler          m_Scheduler;
     CEMMCDevice         m_EMMC;
+    // The card's read cache, and the instrument that says whether it is
+    // earning its memory. It takes the card's name over in the device name
+    // service once the card is up, so FatFs — and through it every file the
+    // game opens, GRP and configuration alike — reaches the card through it
+    // without anything above knowing. Its pool is sized by --rapi-cache in
+    // the defaults block, so one image can be run at several sizes to find
+    // the right one for this game. Writes always reach the card.
+    CDiskCacheDevice    m_DiskCache;
     FATFS               m_FileSystem;
     CConsole            m_Console;
     // The USB host controller, with plug-and-play on so a keyboard or a pad

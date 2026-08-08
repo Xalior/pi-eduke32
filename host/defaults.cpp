@@ -24,6 +24,7 @@
 //
 #include "defaults.h"
 #include "defaultsblock.h"
+#include <diskcache.h>
 
 #include <SDL2/SDL_circle.h>
 #include <circle/memorymap.h>
@@ -75,6 +76,8 @@ TDefaultsBlock _eduke32_defaults =
 
 int rapi_debug_uart = 0;
 
+unsigned rapi_cache_kb = DISKCACHE_DEFAULT_KB;
+
 }
 
 // Every argument starting `--rapi-` is the kernel's, and every one of them is
@@ -112,6 +115,44 @@ static void DispatchKernelSwitch(const char *pSwitch)
             SDL2Circle_Log(From, SDL2CIRCLE_LOG_NOTICE,
                            "--rapi-perf consumed: performance reports every %u s",
                            nSeconds);
+        }
+        else
+        {
+            SDL2Circle_Log(From, SDL2CIRCLE_LOG_WARNING,
+                           "unrecognised kernel switch \"%s\" ignored", pSwitch);
+        }
+    }
+    else if (strncmp(pSwitch, "--rapi-cache=", 13) == 0)
+    {
+        // The disk cache's pool. Digits are kilobytes; a trailing K or M says
+        // so outright, because the difference between 4096 and 4096M is a
+        // board that will not boot. 0 turns the cache off and leaves the
+        // counting on, which is the run every other size is compared against.
+        const char *pValue = pSwitch + 13;
+        unsigned nSize = 0;
+        unsigned nScale = 1;
+        bool bDigits = *pValue != '\0';
+
+        const char *p = pValue;
+        for (; *p >= '0' && *p <= '9'; p++)
+            nSize = nSize * 10 + (unsigned)(*p - '0');
+
+        if (p == pValue)
+            bDigits = false;
+        else if (*p == 'M' || *p == 'm')
+            { nScale = 1024; p++; }
+        else if (*p == 'K' || *p == 'k')
+            p++;
+
+        if (*p != '\0')
+            bDigits = false;
+
+        if (bDigits)
+        {
+            rapi_cache_kb = nSize * nScale;
+            SDL2Circle_Log(From, SDL2CIRCLE_LOG_NOTICE,
+                           "--rapi-cache consumed: disk cache pool %u KB",
+                           rapi_cache_kb);
         }
         else
         {
