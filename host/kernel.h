@@ -96,9 +96,10 @@ private:
     // earning its memory. It takes the card's name over in the device name
     // service once the card is up, so FatFs — and through it every file the
     // game opens, GRP and configuration alike — reaches the card through it
-    // without anything above knowing. Its pool is sized by --rapi-cache in
-    // the defaults block, so one image can be run at several sizes to find
-    // the right one for this game. Writes always reach the card.
+    // without anything above knowing. Its pool and read-ahead are sized by
+    // --rapi-cache-size and --rapi-cache-readahead in the defaults block, so
+    // one image can be run at several settings to find the right ones for
+    // this game. Writes always reach the card.
     CDiskCacheDevice    m_DiskCache;
     FATFS               m_FileSystem;
     CConsole            m_Console;
