@@ -154,6 +154,14 @@ Everything the game reads or writes stays inside `games/eduke32/`. One card
 can carry several of these games, and each keeps to its own directory so
 that two of them never overwrite each other's settings.
 
+### Keyboard layout
+
+The card's `cmdline.txt` carries the system's keyboard layout. Circle, the bare-metal framework beneath Duke Nukem 3D, reads this setting at boot and defaults to US. To use a different layout, add `keymap=` to the file:
+
+    keymap=uk
+
+Available layouts: `us` (default), `uk`, `de`, `es`, `fr`, `it`, `dv` (Dvorak). A card built by `make card` has no preset layout — you add one when you write the card if your keyboard is not US.
+
 ## Where the source comes from
 
 EDuke32 is included as a submodule from
