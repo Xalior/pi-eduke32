@@ -156,11 +156,11 @@ that two of them never overwrite each other's settings.
 
 ### Keyboard layout
 
-The card's `cmdline.txt` carries the system's keyboard layout. Circle, the bare-metal framework beneath Duke Nukem 3D, reads this setting at boot and defaults to US. To use a different layout, add `keymap=` to the file:
+The card's `cmdline.txt` carries the system's keyboard layout. Circle, the bare-metal framework beneath Duke Nukem 3D, reads this setting at boot and uses a German layout if the name is missing or not recognised. To use a different layout, add `keymap=` to the file:
 
-    keymap=uk
+    keymap=UK
 
-Available layouts: `us` (default), `uk`, `de`, `es`, `fr`, `it`, `dv` (Dvorak). A card built by `make card` has no preset layout — you add one when you write the card if your keyboard is not US.
+Available layouts: `US`, `UK`, `DE`, `ES`, `FR`, `IT` and `DV` (Dvorak). Names are case-sensitive; a name in the wrong case matches nothing and the system falls back to German. A card built by `make card` has no preset layout — you add one when you write the card if your keyboard is not US.
 
 ## Where the source comes from
 
