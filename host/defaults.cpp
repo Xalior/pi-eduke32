@@ -78,6 +78,37 @@ int rapi_debug_uart = 0;
 
 unsigned rapi_cache_kb = DISKCACHE_DEFAULT_KB;
 
+unsigned rapi_cache_readahead_kb = DISKCACHE_DEFAULT_READAHEAD_KB;
+
+}
+
+// A size in kilobytes, which is what both disk-cache switches take. Digits
+// alone are kilobytes; a trailing K or M says so outright, because the
+// difference between 4096 and 4096M is a board that will not boot. Anything
+// else is not a size, and the caller treats it as an unrecognised switch
+// rather than acting on a number nobody wrote.
+static bool ParseSizeKB(const char *pValue, unsigned *pKB)
+{
+    unsigned nSize = 0;
+    unsigned nScale = 1;
+    const char *p = pValue;
+
+    for (; *p >= '0' && *p <= '9'; p++)
+        nSize = nSize * 10 + (unsigned)(*p - '0');
+
+    if (p == pValue)
+        return false;               // no digits at all
+
+    if (*p == 'M' || *p == 'm')
+        { nScale = 1024; p++; }
+    else if (*p == 'K' || *p == 'k')
+        p++;
+
+    if (*p != '\0')
+        return false;               // trailing rubbish
+
+    *pKB = nSize * nScale;
+    return true;
 }
 
 // Every argument starting `--rapi-` is the kernel's, and every one of them is
@@ -122,37 +153,31 @@ static void DispatchKernelSwitch(const char *pSwitch)
                            "unrecognised kernel switch \"%s\" ignored", pSwitch);
         }
     }
-    else if (strncmp(pSwitch, "--rapi-cache=", 13) == 0)
+    else if (strncmp(pSwitch, "--rapi-cache-size=", 18) == 0)
     {
-        // The disk cache's pool. Digits are kilobytes; a trailing K or M says
-        // so outright, because the difference between 4096 and 4096M is a
-        // board that will not boot. 0 turns the cache off and leaves the
-        // counting on, which is the run every other size is compared against.
-        const char *pValue = pSwitch + 13;
-        unsigned nSize = 0;
-        unsigned nScale = 1;
-        bool bDigits = *pValue != '\0';
-
-        const char *p = pValue;
-        for (; *p >= '0' && *p <= '9'; p++)
-            nSize = nSize * 10 + (unsigned)(*p - '0');
-
-        if (p == pValue)
-            bDigits = false;
-        else if (*p == 'M' || *p == 'm')
-            { nScale = 1024; p++; }
-        else if (*p == 'K' || *p == 'k')
-            p++;
-
-        if (*p != '\0')
-            bDigits = false;
-
-        if (bDigits)
+        unsigned nKB = 0;
+        if (ParseSizeKB(pSwitch + 18, &nKB))
         {
-            rapi_cache_kb = nSize * nScale;
+            rapi_cache_kb = nKB;
             SDL2Circle_Log(From, SDL2CIRCLE_LOG_NOTICE,
-                           "--rapi-cache consumed: disk cache pool %u KB",
+                           "--rapi-cache-size consumed: disk cache pool %u KB",
                            rapi_cache_kb);
+        }
+        else
+        {
+            SDL2Circle_Log(From, SDL2CIRCLE_LOG_WARNING,
+                           "unrecognised kernel switch \"%s\" ignored", pSwitch);
+        }
+    }
+    else if (strncmp(pSwitch, "--rapi-cache-readahead=", 23) == 0)
+    {
+        unsigned nKB = 0;
+        if (ParseSizeKB(pSwitch + 23, &nKB))
+        {
+            rapi_cache_readahead_kb = nKB;
+            SDL2Circle_Log(From, SDL2CIRCLE_LOG_NOTICE,
+                           "--rapi-cache-readahead consumed: read-ahead %u KB",
+                           rapi_cache_readahead_kb);
         }
         else
         {
