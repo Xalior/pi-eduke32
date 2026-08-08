@@ -33,132 +33,31 @@ the card (see [The card](#the-card) below).
 full GRP is a commercial product; if you do not have it, use the shareware
 GRP or supply your own.
 
-## The renderer: software only
+![Duke Nukem 3D running on a Raspberry Pi 5 with no operating system](docs/eduke32-on-bare-metal.jpg)
 
-EDuke32 can draw in three ways: the original 8-bit software renderer that
-Duke Nukem 3D shipped with in 1996 (which its own documentation calls
-**classic**), and two later renderers built on OpenGL — **Polymost** and
-**Polymer**.
+*Captured from the Pi 5's HDMI output. The board is running this image and
+nothing else — no kernel underneath it, no window system, no launcher.*
 
-**This build has only the classic software renderer.** There is no OpenGL on
-this board at all: the graphics layer underneath draws into the Raspberry
-Pi's framebuffer directly and provides no GL. Building with EDuke32's
-`USE_OPENGL` switched off removes both hardware renderers, and the files
-that make them up are simply not compiled:
+## What works
 
-| Left out | What it was |
-| --- | --- |
-| `polymost.cpp`, `polymer.cpp` | the two OpenGL renderers |
-| `glbuild.cpp`, `glsurface.cpp` | the OpenGL setup and its output surface |
-| `mdsprite.cpp`, `voxmodel.cpp`, `tilepacker.cpp` | 3D models, voxels and texture atlases, all OpenGL-only features |
-| `animvpx.cpp` | the VP8 cutscene player, an OpenGL path needing a separate video library |
+Duke Nukem 3D plays, drawn by the original 1996 software renderer — the one
+its own documentation calls *classic*, and the one the game was designed
+around. The two later OpenGL renderers are not built, because there is no
+OpenGL on this board.
 
-This is not a compromise for the sake of the port. The classic renderer is
-what Duke Nukem 3D was designed around, it is complete, and it produces the
-picture the game was drawn for.
+- **Picture.** 640x480, scaled to your screen. That is the smallest size the
+  engine accepts.
+- **Music.** The game's own OPL3 emulation plays the MIDI music from the GRP.
+- **Keyboard and mouse.** Both, including mouse-look.
 
-### Other things switched off, and why
+What is missing:
 
-| Switched off | Reason |
-| --- | --- |
-| **Multiplayer** (`NETCODE_DISABLE`) | there is no network stack under this board. The bundled ENet library and the older `mmulti` transport are not compiled. |
-| **The startup window** | EDuke32 normally shows a settings dialog before the game starts, drawn with GTK, Windows or macOS widgets. There is no window manager here. Settings come from the configuration file on the card instead. |
-| **Ogg Vorbis, FLAC and XMP music** | two of these decode on a background thread, and this board runs the game on a single core with no threads. Music from the GRP is MIDI, which the game's own OPL3 emulation plays without any of them. |
-| **mimalloc** | a thread-aware allocator, of no use where nothing contends. Memory comes from the board's own allocator. |
-| **PhysicsFS** | an archive-backed virtual filesystem. The GRP is read directly. |
-
-## What this project adds
-
-Everything this project writes lives in `host/`. Upstream is never edited.
-
-### A Circle kernel
-
-`host/kernel.cpp` starts the board — interrupts, timers, the SD card, a
-serial console — and then calls the game's entry point. It also divides the
-work between the processor's cores:
-
-- **Core 0** owns every piece of hardware. On this system, only this core is
-  allowed to touch a device at all.
-- **Core 1** runs the game: the Build engine's classic renderer and the game
-  loop, and nothing else.
-- **Core 2** takes each finished frame and puts it on the screen.
-- **Core 3** is parked.
-
-EDuke32's entry point is renamed at compile time — `-Dmain=eduke32_main`,
-applied only to `source/build/src/sdlayer.cpp` — because `main()` here
-belongs to the kernel. That file compiles as C++, like the rest of the Build
-engine, so the renamed function keeps ordinary C++ linkage: the kernel's own
-declaration of `eduke32_main` must **not** be `extern "C"`, or it asks the
-linker for the unmangled name while the object file offers the mangled one.
-This cost the port its first working link.
-
-### The operating system calls the board does not have
-
-The game is written for a Unix-like system. This board's C library is
-newlib, which has much of that but not all of it. `host/posix_compat.cpp`
-supplies what is missing, and every function in it either does the job by
-another means or fails honestly — nothing pretends to work.
-
-| Missing | What this project does |
-| --- | --- |
-| `nanosleep` | sleeps through the graphics layer's own wait, which hands the processor to the core that serves devices |
-| `mmap` / `munmap` | reads the file into ordinary memory and frees it afterwards. There is no memory manager to map with, so a mapping is a private copy and `msync` says so by failing |
-| `pthread_self`, `pthread_once`, thread-local keys, thread names | the logging library asks the calling thread to identify itself. There is one, and these give a consistent account of it |
-| `backtrace` | reports zero frames, which is the truth: there is no unwinder to walk and no symbol table in the image to name |
-| `getpwuid`, `getuid` | reports no such user. There is no user and no home directory; the game's files are all in one place |
-| `ioctl` | fails. It is reached only through a header, and no code that would call it is compiled |
-| `posix_memalign` | delegates to Circle's own `memalign()`, which already returns every block aligned to the processor's cache line — the same guarantee `malloc()` gives, and the same free()-compatible block |
-| `execvp`, `waitpid` | fail. Reached only through dear imgui's default "open this in the shell" callback, which nothing in this game ever asks for |
-
-### A file type on directory entries
-
-Circle's `struct dirent` carries a name and an inode number and nothing else,
-because the FAT filesystem underneath has no more to give. EDuke32 reads a
-`d_type` field to tell a directory from a file.
-
-`host/sdl2ext/dirent.h` declares the structure with that field and
-`host/circle_syscalls.cpp` fills it: the graphics layer's file service
-reports whether an entry is a directory, so an entry read from the core the
-game runs on carries a real answer. An entry read on the hardware core comes
-straight from the C library, which does not know, and is reported as
-`DT_UNKNOWN` rather than guessed at.
-
-`opendir`, `readdir`, `closedir` and `rewinddir` are wrapped with `--wrap` so
-every call reaches the graphics layer's file service instead of driving
-FatFs from whichever core called it. Newlib defines a fifth function,
-`readdir_r`, in the same translation unit as the other four — so the kernel
-image carries it too, dead weight pulled in by the object file rather than
-by name. Nothing in this game, this project, or the graphics layer calls
-`readdir_r`; it is not wrapped, and if anything ever did call it, it would
-reach FatFs directly from whatever core called it, off core 0. Worth
-checking again if a future change adds a directory scan through a different
-path.
-
-### An 8-bit surface
-
-The graphics layer renders from 32-bit textures. The Build engine draws into
-an 8-bit paletted buffer and converts it through its palette on the way out.
-`host/circle_stubs.cpp` supplies the surface handling that conversion needs.
-
-### The patchable-defaults block
-
-Every port in this family carries a small block of text at a fixed place
-inside the image, which anything holding the image before it boots can write
-into. The kernel reads it at startup and adds what it finds to the game's
-command line, so a setting can be changed for one boot, over the network,
-without rebuilding anything or rewriting the card.
-
-## The mouse
-
-**The mouse is implemented and has not been tested on hardware by this
-port.** The graphics layer implements the whole SDL mouse interface,
-including the relative mode that first-person look-around needs, reading
-movement straight from the USB report. Nothing in this project disables it.
-
-Whether Duke's aiming actually feels right through it is unknown until
-somebody plays it. That is a different statement from "there is no mouse",
-and older notes elsewhere in this family of projects that say the pointer
-never moves are out of date.
+- **Multiplayer.** Single player only.
+- **The startup settings window.** EDuke32 normally shows one before the game
+  begins; settings come from the configuration file on the card instead.
+- **The replacement music formats and the video cutscenes.** Ogg, FLAC and
+  tracker music are not built, and neither is the VP8 cutscene player — it is
+  part of the OpenGL path.
 
 ## Building
 
@@ -274,49 +173,6 @@ Pi.
 
 Both submodules use `https://` addresses so that anyone can clone this
 repository and everything in it without an account.
-
-## State of this port
-
-Read this section before expecting the game to run.
-
-- **The whole game compiles and links clean for all three boards, but for
-  one symbol.** `SDL_GL_DeleteContext` is the last thing circle-libsdl2 owes
-  this port. It is dead code on this board — `sdlayer.cpp` calls it only
-  from `if (sdl_context) SDL_GL_DeleteContext(sdl_context);` in its shutdown
-  path, and `sdl_context` is always null here, since `USE_OPENGL` is unset
-  and no GL context is ever created — but the symbol still has to resolve
-  for the link to complete. `SDL_GL_CreateContext` is not in circle-libsdl2
-  either, which reads as GL context management never having been in the
-  shim's scope at all, rather than an oversight. Neither belongs in this
-  repository: circle-libsdl2 is the SDL2 layer, and this is what it still
-  owes this port. (A longer list — `SDL_CloseAudio`, `SDL_OpenURL`,
-  `SDL_GetDisplayDPI`, `SDL_GetKeyboardFocus`, `SDL_GetWindowWMInfo`,
-  `SDL_GL_GetDrawableSize`, `SDL_SetTextInputRect`,
-  `SDL_Vulkan_GetDrawableSize` — was in this section until circle-libsdl2
-  added them; dear imgui's SDL2 backend, called unconditionally every frame
-  and every event for any SDL2 build, needed most of it.)
-- **It runs on a Pi 5, and nothing has been seen on a screen yet.** The game
-  starts, reads its GRP, compiles its scripts and reaches its main loop, and
-  it stays there. Nobody has yet watched Duke's first level appear on a
-  display, and serial output is not gameplay: until somebody has, this is a
-  game that runs, not one that works. The Pi 3 and the Pi 4 have not been
-  tried at all.
-- **The picture is 640 by 480, because that is the smallest the engine
-  accepts.** EDuke32 screens every display mode against its own minimum of
-  640 by 480 and discards anything below it, and this port gives the game one
-  display mode: the virtual display `host/kernel.cpp` declares. Declared
-  smaller — at 320 by 200, the raster the game was drawn for — the mode list
-  came out empty, and an empty mode list is not an error to EDuke32: its
-  start-up skips setting a video mode, skips saying that it could not, and
-  skips starting sound as well, so the game runs on with no window, no
-  picture and no audio.
-- **Nothing about performance is known.** The classic renderer costs time
-  for every pixel it draws, on one core, with no acceleration of any kind,
-  and 640 by 480 is nearly five times the pixels of the size the game was
-  drawn for. The graphics layer scales that up to the panel. Whether a Pi 3
-  can hold a playable frame rate at that size, and how much larger a Pi 5 can
-  go, are open questions that only the hardware can answer.
-- **Sound is untested**, and music is MIDI through the OPL3 emulation only.
 
 ## Licences
 
