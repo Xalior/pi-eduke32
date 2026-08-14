@@ -102,7 +102,6 @@ private:
     // this game. Writes always reach the card.
     CDiskCacheDevice    m_DiskCache;
     FATFS               m_FileSystem;
-    CConsole            m_Console;
     // The USB host controller, with plug-and-play on so a keyboard or a pad
     // connected after boot is still found. Initialised in Initialize(); the
     // shim pumps it from core 0's servo once the split is armed.
