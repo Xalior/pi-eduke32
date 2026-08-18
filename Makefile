@@ -39,6 +39,17 @@ include mk/toolchain.mk
 
 BOARDS ?= rpi3 rpi4 rpi5
 
+# The libc++ checkout the worlds are built from, stated here and exported so
+# the value reaches circle-libsdl2's own build through the environment.
+#
+# Left to itself the library defaults to a directory beside ITSELF, and the
+# copy that builds the worlds is the one nested inside this repository — so
+# the unstated default lands the checkout inside the repository as well, and
+# anyone who already has that tag on disk fetches several hundred megabytes
+# of it a second time. Naming it here puts it beside the repository instead,
+# where a sibling project can share it.
+export CIRCLE_LLVM ?= $(abspath $(CURDIR)/../circle-llvm)
+
 IMAGE_rpi3 = kernel8.img
 IMAGE_rpi4 = kernel8-rpi4.img
 IMAGE_rpi5 = kernel_2712.img
@@ -46,8 +57,15 @@ IMAGE_rpi5 = kernel_2712.img
 .PHONY: deps kernels verify media netboot card clean-boards $(BOARDS)
 .PHONY: $(addprefix deps-,$(BOARDS))
 
+# The shim, and the runtime worlds beside it. The default is the copy in
+# this repository, which is what a plain clone builds against. Setting SHIM
+# points every rule below at another one instead - a checkout shared with
+# other projects, already built - so dependencies are built and checked
+# where the images will actually be linked from, rather than here.
+SHIM ?= $(abspath $(CURDIR)/circle-libsdl2)
+
 deps:
-	$(MAKE) -C circle-libsdl2 deps
+	$(MAKE) -C $(SHIM) deps
 
 # One board's dependencies: its own circle-stdlib world and the shim archive
 # built against it. A machine with a small disk — a CI runner, most obviously
@@ -57,8 +75,8 @@ deps:
 # to phony targets — it would quietly answer "nothing to be done" and leave
 # the world unbuilt.
 $(addprefix deps-,$(BOARDS)): deps-%:
-	$(MAKE) -C circle-libsdl2 world BOARD=$*
-	$(MAKE) -C circle-libsdl2 libSDL2-$*.a BOARD=$*
+	$(MAKE) -C $(SHIM) world BOARD=$*
+	$(MAKE) -C $(SHIM) libSDL2-$*.a BOARD=$*
 
 $(BOARDS): check-toolchain
 	$(MAKE) -C host RAPI_BOARD=$@
