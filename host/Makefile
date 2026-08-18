@@ -37,21 +37,6 @@ include ../mk/toolchain.mk
 
 RAPI_BOARD ?= rpi5
 
-# WHERE THE BUILT WORLD COMES FROM.
-#
-# The default is this game's own nested shim, so a clone of this repository
-# alone builds and uses its own worlds and nothing needs setting. A parent
-# that keeps ONE set of built worlds for several games — they are gigabytes
-# each, and identical when the pin and the configuration match — points
-# CIRCLE_WORLDS at them.
-#
-# Named before the include below rather than beside SHIM further down,
-# because make reads an include when it reaches it.
-CIRCLE_WORLDS ?= ../circle-libsdl2
-WORLD = $(CIRCLE_WORLDS)/circle-stdlib-$(RAPI_BOARD)
-
-include $(WORLD)/Config.mk
-
 ROOT = ..
 # WHERE THE SHIM COMES FROM.
 #
@@ -59,8 +44,30 @@ ROOT = ..
 # gets, and what CI builds. A parent proving one shim across several games
 # points SHIM at the single checkout it is proving, so the library is built
 # once rather than once per game.
+#
+# Named here, above the world include below, because make reads an include
+# when it reaches it and the world's location is derived from this one.
 SHIM ?= $(ROOT)/circle-libsdl2
 DUKE = $(ROOT)/eduke32
+
+# WHERE THE BUILT WORLD COMES FROM.
+#
+# The default is whichever shim this build uses, so a clone of this
+# repository alone builds and uses its own worlds and nothing needs setting.
+# A parent that keeps ONE set of built worlds for several games — they are
+# gigabytes each, and identical when the pin and the configuration match —
+# points CIRCLE_WORLDS at them.
+CIRCLE_WORLDS ?= $(SHIM)
+WORLD = $(CIRCLE_WORLDS)/circle-stdlib-$(RAPI_BOARD)
+
+# Said plainly here, because make's own report for a missing include is the
+# name of a file in a directory nobody recognises, and the answer to it is
+# never "create that file".
+ifeq ($(wildcard $(WORLD)/Config.mk),)
+$(error the $(RAPI_BOARD) circle-stdlib world is not configured ($(WORLD)/Config.mk is missing) — either CIRCLE_WORLDS points at the wrong place or the world has still to be built with 'make deps-$(RAPI_BOARD)' at the repository root)
+endif
+
+include $(WORLD)/Config.mk
 
 OBJDIR = build/$(RAPI_BOARD)
 
