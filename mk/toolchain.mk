@@ -43,6 +43,18 @@ REPO_ROOT        := $(abspath $(TOOLCHAIN_MK_DIR)/..)
 # RAPI_TOOLCHAIN_DIR if the environment names one, then this repository's own
 # toolchains/. Either may be the unpacked toolchain itself (it has a bin/) or
 # a directory holding one or more unpacked releases.
+# A RAPI_TOOLCHAIN_DIR that names a directory which is not there is a
+# mistake, not an absence, and it is refused rather than searched past. The
+# variable comes from an environment rather than from this file, so it beats
+# any default here: left to fall through, the build carries on with whatever
+# else it finds and the wrong toolchain - or none, and a link error naming a
+# file with no name - is what surfaces instead of the setting that caused it.
+ifneq ($(RAPI_TOOLCHAIN_DIR),)
+ifeq ($(wildcard $(RAPI_TOOLCHAIN_DIR)),)
+$(error RAPI_TOOLCHAIN_DIR names $(RAPI_TOOLCHAIN_DIR), which does not exist)
+endif
+endif
+
 TOOLCHAIN_SEARCH := $(RAPI_TOOLCHAIN_DIR) $(REPO_ROOT)/toolchains
 
 ifeq ($(shell command -v aarch64-none-elf-gcc 2>/dev/null),)
